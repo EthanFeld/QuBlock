@@ -16,13 +16,7 @@ simulation on statevectors, and OpenQASM export. The pip package name is
 
 ## Installation
 ```bash
-python -m pip install -e .
-```
-
-Dev tools:
-
-```bash
-python -m pip install -e .[dev]
+pip install qublock
 ```
 
 ## Quickstart
