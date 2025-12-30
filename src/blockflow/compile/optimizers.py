@@ -42,6 +42,7 @@ def optimize_circuit(circ: Circuit, opts: Optional[OptimizationOptions] = None) 
                 and len(prev.params) == 1
             ):
                 angle = prev.params[0] + g.params[0]
+                angle = math.remainder(angle, 2 * math.pi)
                 if math.isclose(angle, 0.0, abs_tol=1e-12):
                     optimized.pop()
                 else:

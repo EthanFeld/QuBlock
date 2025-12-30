@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import numbers
 from typing import Protocol
 
 from ..compile.circuit import Circuit
@@ -10,6 +11,14 @@ class WireSpec:
     system_qubits: int
     ancilla_clean: int = 0
     ancilla_dirty: int = 0
+
+    def __post_init__(self) -> None:
+        for field_name in ("system_qubits", "ancilla_clean", "ancilla_dirty"):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, numbers.Integral):
+                raise TypeError(f"{field_name} must be a non-negative int")
+            if value < 0:
+                raise ValueError(f"{field_name} must be a non-negative int")
 
 class CircuitRecipe(Protocol):
     """

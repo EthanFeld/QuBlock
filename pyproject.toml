@@ -9,9 +9,28 @@ description = "Block-encoding primitives and semantic execution for classical si
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = ["numpy>=1.22"]
+license = {file = "LICENSE"}
+authors = [{name = "Ethan Feldman", email = "ethanfeldman23@gmail.com"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Homepage = "https://github.com/EthanFeld/QuBlock"
+Issues = "https://github.com/EthanFeld/QuBlock/issues"
+Repository = "https://github.com/EthanFeld/QuBlock"
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.6.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -25,3 +44,10 @@ omit = ["tests/*"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = false
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP"]

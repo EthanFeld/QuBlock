@@ -9,6 +9,7 @@ def to_openqasm(circ: Circuit, *, flavor: QasmFlavor = "qasm3") -> str:
     Minimal OpenQASM exporter for a small gate set.
     Extend this map as your recipes and optimizers grow.
     """
+    circ.validate()
     needs_classical = any(g.name.lower() == "measure" for g in circ.gates)
     if flavor == "qasm2":
         lines = ["OPENQASM 2.0;", 'include "qelib1.inc";', f"qreg q[{circ.num_qubits}];"]
@@ -42,8 +43,6 @@ def _emit_gate(g: Gate, flavor: QasmFlavor, classical_reg: Optional[str]) -> str
         return f"{n}({g.params[0]}) {qs};"
 
     if n == "measure" and len(g.qubits) == 1:
-        if g.controls:
-            raise ValueError("measure cannot be controlled")
         qs = ", ".join([f"q[{i}]" for i in g.qubits])
         if classical_reg is None:
             raise ValueError("measure export requires a classical register")

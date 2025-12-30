@@ -9,6 +9,11 @@ class StateVector:
     """
     data: np.ndarray
 
+    def __post_init__(self) -> None:
+        self.data = np.asarray(self.data)
+        if self.data.ndim != 1:
+            raise ValueError("StateVector data must be a 1D array")
+
     def normalize(self) -> None:
         nrm = np.linalg.norm(self.data)
         if nrm == 0:

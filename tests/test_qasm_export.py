@@ -45,6 +45,13 @@ def test_qasm3_multi_controlled_x() -> None:
     assert "ctrl(2) @ x q[0], q[1], q[2];" in qasm
 
 
+def test_qasm3_controlled_param_gate() -> None:
+    circ = Circuit(num_qubits=2)
+    circ.add("rx", [1], params=[0.25], controls=[0])
+    qasm = to_openqasm(circ, flavor="qasm3")
+    assert "ctrl @ rx(0.25) q[0], q[1];" in qasm
+
+
 def test_qasm2_controlled_x_mapping() -> None:
     circ = Circuit(num_qubits=2)
     circ.add("x", [1], controls=[0])
@@ -57,6 +64,13 @@ def test_qasm2_multi_controlled_x_raises() -> None:
     circ.add("x", [2], controls=[0, 1])
     qasm = to_openqasm(circ, flavor="qasm2")
     assert "ccx q[0], q[1], q[2];" in qasm
+
+
+def test_qasm2_controlled_gate_not_supported() -> None:
+    circ = Circuit(num_qubits=2)
+    circ.add("u", [1], controls=[0])
+    with pytest.raises(ValueError, match="not supported"):
+        to_openqasm(circ, flavor="qasm2")
 
 
 def test_emit_gate_requires_classical_for_measure() -> None:
@@ -77,6 +91,13 @@ def test_qasm2_controlled_multi_target_raises() -> None:
     circ.add("swap", [1, 2], controls=[0])
     with pytest.raises(ValueError, match="multi-target"):
         to_openqasm(circ, flavor="qasm2")
+
+
+def test_controlled_measure_raises() -> None:
+    circ = Circuit(num_qubits=2)
+    circ.add("measure", [0], controls=[1])
+    with pytest.raises(ValueError, match="measure cannot be controlled"):
+        to_openqasm(circ, flavor="qasm3")
 
 
 def test_qasm3_controlled_param_count_raises() -> None:
