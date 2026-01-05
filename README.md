@@ -19,6 +19,13 @@ simulation on statevectors, and OpenQASM export. The pip package name is
 pip install qublock
 ```
 
+Optional extras:
+```bash
+pip install qublock[gpu]    # CuPy backend
+pip install qublock[torch]  # PyTorch backend
+pip install qublock[sparse] # SciPy sparse operators
+```
+
 ## Quickstart
 ### Semantic execution
 ```python
@@ -88,6 +95,24 @@ final_state, report = SemanticExecutor().run(program, state)
 ```
 
 The `RunReport` accumulates uses, success probabilities, and ancilla peaks.
+
+### Backend selection and speed flags
+Semantic execution defaults to NumPy. You can switch backends without changing
+code by setting environment variables:
+- `BLOCKFLOW_BACKEND=numpy|cupy|torch|auto` (default: numpy)
+- `BLOCKFLOW_DEVICE=cuda` (torch only, optional)
+- `BLOCKFLOW_DTYPE=complex64|complex128|float32|float64` (optional)
+- `BLOCKFLOW_COPY_STATE=0` to avoid copying the initial state
+
+Example:
+```bash
+BLOCKFLOW_BACKEND=cupy python your_script.py
+```
+
+To apply a block encoding multiple times in one step, use `repeat`:
+```python
+program = Program([ApplyBlockEncodingStep(be, repeat=5)])
+```
 
 ## Circuits, recipes, and OpenQASM
 Recipes declare required wires and return a backend-agnostic circuit. The block

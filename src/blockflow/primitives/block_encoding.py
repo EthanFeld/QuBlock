@@ -5,6 +5,8 @@ import numbers
 from typing import Optional
 import numpy as np
 
+from .. import backend
+
 from .linear_operator import LinearOperator, NumpyMatrixOperator, DiagonalOperator, PermutationOperator
 from .resources import ResourceEstimate
 from .capabilities import Capabilities
@@ -80,10 +82,12 @@ class BlockEncoding:
         recipe: Optional[CircuitRecipe] = None,
         epsilon: float = 0.0,
     ) -> "BlockEncoding":
-        diag = np.asarray(diagonal)
+        diag = backend.asarray(diagonal)
         if diag.ndim != 1:
             raise ValueError("diagonal must be a 1D array")
-        max_entry = float(np.max(np.abs(diag))) if diag.size > 0 else 0.0
+        max_entry = (
+            backend.to_scalar(backend.amax(backend.abs(diag))) if backend.size(diag) > 0 else 0.0
+        )
         if alpha is None:
             if math.isclose(max_entry, 0.0):
                 raise ValueError("diagonal must be nonzero to infer alpha")
@@ -122,23 +126,43 @@ class BlockEncoding:
             epsilon=epsilon,
         )
 
-    def semantic_apply(self, vec: np.ndarray) -> np.ndarray:
-        vec_arr = np.asarray(vec)
+    def semantic_apply(self, vec: np.ndarray, *, out: Optional[np.ndarray] = None) -> np.ndarray:
+        vec_arr = backend.asarray(vec)
         rows, cols = self._op_shape()
         self._validate_vector(vec_arr, cols, "semantic_apply")
-        out = np.asarray(self.op.apply(vec_arr))
-        self._validate_vector(out, rows, "semantic_apply output")
-        return out
+        if out is None:
+            out_arr = backend.asarray(self.op.apply(vec_arr))
+            self._validate_vector(out_arr, rows, "semantic_apply output")
+            return out_arr
+        out_arr = backend.asarray(out)
+        self._validate_vector(out_arr, rows, "semantic_apply output")
+        if hasattr(self.op, "apply_into"):
+            out_arr = self.op.apply_into(vec_arr, out_arr)
+        else:
+            tmp = backend.asarray_like(self.op.apply(vec_arr), out_arr)
+            out_arr[...] = tmp
+        self._validate_vector(out_arr, rows, "semantic_apply output")
+        return out_arr
 
-    def semantic_apply_adjoint(self, vec: np.ndarray) -> np.ndarray:
+    def semantic_apply_adjoint(self, vec: np.ndarray, *, out: Optional[np.ndarray] = None) -> np.ndarray:
         if not self.capabilities.supports_adjoint:
             raise ValueError("Adjoint not supported by this block encoding")
-        vec_arr = np.asarray(vec)
+        vec_arr = backend.asarray(vec)
         rows, cols = self._op_shape()
         self._validate_vector(vec_arr, rows, "semantic_apply_adjoint")
-        out = np.asarray(self.op.apply_adjoint(vec_arr))
-        self._validate_vector(out, cols, "semantic_apply_adjoint output")
-        return out
+        if out is None:
+            out_arr = backend.asarray(self.op.apply_adjoint(vec_arr))
+            self._validate_vector(out_arr, cols, "semantic_apply_adjoint output")
+            return out_arr
+        out_arr = backend.asarray(out)
+        self._validate_vector(out_arr, cols, "semantic_apply_adjoint output")
+        if hasattr(self.op, "apply_adjoint_into"):
+            out_arr = self.op.apply_adjoint_into(vec_arr, out_arr)
+        else:
+            tmp = backend.asarray_like(self.op.apply_adjoint(vec_arr), out_arr)
+            out_arr[...] = tmp
+        self._validate_vector(out_arr, cols, "semantic_apply_adjoint output")
+        return out_arr
 
     def can_export_circuit(self) -> bool:
         if not self.capabilities.supports_circuit_recipe:
@@ -179,7 +203,7 @@ class BlockEncoding:
     def _can_synthesize_from_matrix(self) -> bool:
         if not isinstance(self.op, NumpyMatrixOperator):
             return False
-        mat = self.op.mat
+        mat = self.op.to_numpy()
         strategy = self.synthesis_strategy or "prep_select"
         if can_synthesize_block_encoding_circuit(mat, alpha=self.alpha, strategy=strategy):
             try:
@@ -194,7 +218,7 @@ class BlockEncoding:
     def _build_circuit_from_matrix(self) -> Circuit:
         if not isinstance(self.op, NumpyMatrixOperator):
             raise ValueError("Matrix synthesis requires NumpyMatrixOperator")
-        mat = self.op.mat
+        mat = self.op.to_numpy()
         strategy = self.synthesis_strategy or "prep_select"
         if can_synthesize_block_encoding_circuit(mat, alpha=self.alpha, strategy=strategy):
             required = required_ancillas_for_block_encoding(mat, alpha=self.alpha, strategy=strategy)

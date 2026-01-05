@@ -12,6 +12,7 @@ from .recipe import WireSpec
 from ..compile.circuit import Circuit
 from ..compile.export_qasm import QasmFlavor, to_openqasm
 from ..compile.optimizers import OptimizationOptions, optimize_circuit
+from .. import backend
 
 
 def _validate_real(name: str, value: float, *, positive: bool = False, non_negative: bool = False) -> None:
@@ -56,7 +57,7 @@ class VectorEncoding:
     """
     Represents a vector-encoding with normalization alpha.
     """
-    vec: np.ndarray
+    vec: object
     alpha: float
     resources: ResourceEstimate
     success: SuccessModel = SuccessModel()
@@ -67,7 +68,7 @@ class VectorEncoding:
     def __post_init__(self) -> None:
         _validate_real("alpha", self.alpha, positive=True)
         _validate_real("epsilon", self.epsilon, non_negative=True)
-        vec_arr = np.asarray(self.vec)
+        vec_arr = backend.asarray(self.vec)
         if vec_arr.ndim != 1:
             raise ValueError("vec must be a 1D array")
         if vec_arr.shape[0] <= 0:
@@ -85,10 +86,10 @@ class VectorEncoding:
         recipe: Optional[StatePreparationRecipe] = None,
         epsilon: float = 0.0,
     ) -> "VectorEncoding":
-        vec_arr = np.asarray(vec)
+        vec_arr = backend.asarray(vec)
         if vec_arr.ndim != 1:
             raise ValueError("vec must be a 1D array")
-        norm = float(np.linalg.norm(vec_arr))
+        norm = backend.to_scalar(backend.linalg_norm(vec_arr))
         if math.isclose(norm, 0.0):
             raise ValueError("vec must be nonzero")
         return cls(
@@ -106,7 +107,7 @@ class VectorEncoding:
         return int(self.vec.shape[0])
 
     def semantic_state(self) -> np.ndarray:
-        vec_arr = np.asarray(self.vec)
+        vec_arr = backend.asarray(self.vec)
         if vec_arr.ndim != 1:
             raise ValueError("vec must be a 1D array")
         return vec_arr / float(self.alpha)

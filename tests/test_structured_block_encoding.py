@@ -13,6 +13,12 @@ def test_diagonal_operator_apply() -> None:
     vec = np.array([3.0, 4.0])
     assert np.allclose(op.apply(vec), np.array([3.0, -8.0]))
     assert np.allclose(op.apply_adjoint(vec), np.array([3.0, -8.0]))
+    out = np.empty_like(vec)
+    assert op.apply_into(vec, out) is out
+    assert np.allclose(out, np.array([3.0, -8.0]))
+    out_adj = np.empty_like(vec)
+    assert op.apply_adjoint_into(vec, out_adj) is out_adj
+    assert np.allclose(out_adj, np.array([3.0, -8.0]))
     assert np.isclose(op.norm_bound(), 2.0)
     assert op.dtype == np.array([1.0, -2.0]).dtype
 
@@ -22,6 +28,12 @@ def test_permutation_operator_apply() -> None:
     vec = np.array([10.0, 20.0, 30.0])
     assert np.allclose(op.apply(vec), np.array([20.0, 10.0, 30.0]))
     assert np.allclose(op.apply_adjoint(vec), np.array([20.0, 10.0, 30.0]))
+    out = np.empty_like(vec)
+    assert op.apply_into(vec, out) is out
+    assert np.allclose(out, np.array([20.0, 10.0, 30.0]))
+    out_adj = np.empty_like(vec)
+    assert op.apply_adjoint_into(vec, out_adj) is out_adj
+    assert np.allclose(out_adj, np.array([20.0, 10.0, 30.0]))
     assert np.isclose(op.norm_bound(), 1.0)
     assert op.dtype == np.array([1, 0, 2]).dtype
 
@@ -45,6 +57,24 @@ def test_permutation_operator_validation() -> None:
         PermutationOperator(np.array([0.5, 1.0]))
     with pytest.raises(ValueError, match="non-empty"):
         PermutationOperator(np.array([], dtype=int))
+    with pytest.raises(ValueError, match="1D"):
+        PermutationOperator(np.eye(2, dtype=int))
+
+    class FakeFloatTensor:
+        def is_floating_point(self):
+            return True
+
+        def is_complex(self):
+            return False
+
+    with pytest.raises(TypeError, match="integers"):
+        PermutationOperator(FakeFloatTensor())
+
+    op = PermutationOperator(np.array([1, 0, 2]))
+    with pytest.raises(ValueError, match="dimension"):
+        op.apply(np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="dimension"):
+        op.apply_adjoint(np.array([1.0, 2.0]))
 
 
 def test_diagonal_operator_validation() -> None:
@@ -52,6 +82,11 @@ def test_diagonal_operator_validation() -> None:
         DiagonalOperator(np.eye(2))
     with pytest.raises(ValueError, match="non-empty"):
         DiagonalOperator(np.array([]))
+    op = DiagonalOperator(np.array([1.0, 2.0]))
+    with pytest.raises(ValueError, match="dimension"):
+        op.apply(np.array([1.0, 2.0, 3.0]))
+    with pytest.raises(ValueError, match="dimension"):
+        op.apply_adjoint(np.array([1.0, 2.0, 3.0]))
 
 
 def test_structured_block_encoding_constructor_errors() -> None:

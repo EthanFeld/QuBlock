@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from blockflow.primitives.capabilities import Capabilities
-from blockflow.primitives.linear_operator import NumpyMatrixOperator
+from blockflow import backend
+from blockflow.primitives.linear_operator import NumpyMatrixOperator, SparseMatrixOperator
 from blockflow.primitives.recipe import WireSpec
 from blockflow.primitives.resources import ResourceEstimate
 from blockflow.primitives.success import SuccessModel
@@ -46,6 +47,12 @@ def test_numpy_operator_apply_and_norm_bound() -> None:
     vec = np.array([1.0, 2.0])
     assert np.allclose(op.apply(vec), np.array([1.0, -2.0]))
     assert np.allclose(op.apply_adjoint(vec), np.array([1.0, -2.0]))
+    out = np.empty_like(vec)
+    assert op.apply_into(vec, out) is out
+    assert np.allclose(out, np.array([1.0, -2.0]))
+    out_adj = np.empty_like(vec)
+    assert op.apply_adjoint_into(vec, out_adj) is out_adj
+    assert np.allclose(out_adj, np.array([1.0, -2.0]))
     assert op.norm_bound() == 5.0
     assert op.dtype == mat.dtype
 
@@ -54,6 +61,112 @@ def test_numpy_operator_apply_and_norm_bound() -> None:
 
     with pytest.raises(ValueError, match="2D"):
         NumpyMatrixOperator(np.array([1.0, 2.0]))
+
+
+def test_numpy_operator_norm_bound_fallback(monkeypatch) -> None:
+    mat = np.eye(2)
+    op = NumpyMatrixOperator(mat)
+
+    def raise_norm(_x, ord=None):
+        raise TypeError("boom")
+
+    monkeypatch.setattr(backend, "linalg_norm", raise_norm)
+    assert np.isclose(op.norm_bound(), np.linalg.norm(mat, ord=2))
+
+
+def test_sparse_operator_apply_and_norm_bound() -> None:
+    mat = np.array([[1.0, 0.0], [0.0, 2.0]])
+    op = SparseMatrixOperator(mat, _norm_bound=3.0)
+    vec = np.array([1.0, 2.0])
+    assert np.allclose(op.apply(vec), np.array([1.0, 4.0]))
+    out = np.empty_like(vec)
+    assert op.apply_into(vec, out) is out
+    assert np.allclose(out, np.array([1.0, 4.0]))
+    assert op.apply_adjoint(vec).shape == vec.shape
+    out_adj = np.empty_like(vec)
+    assert op.apply_adjoint_into(vec, out_adj) is out_adj
+    assert op.norm_bound() == 3.0
+
+
+def test_sparse_operator_norm_and_toarray_paths() -> None:
+    class NormMat:
+        def __init__(self):
+            self.shape = (2, 2)
+            self.dtype = np.float64
+
+        def norm(self):
+            return 7.0
+
+        def __matmul__(self, other):
+            return np.eye(2) @ other
+
+        def conj(self):
+            return self
+
+        @property
+        def T(self):
+            return self
+
+    op = SparseMatrixOperator(NormMat())
+    assert op.norm_bound() == 7.0
+
+    class ToArrayMat:
+        def __init__(self):
+            self.shape = (2, 2)
+            self.dtype = np.float64
+
+        def norm(self):
+            raise ValueError("nope")
+
+        def toarray(self):
+            return np.array([[2.0, 0.0], [0.0, 1.0]])
+
+        def __matmul__(self, other):
+            return self.toarray() @ other
+
+        def conj(self):
+            return self
+
+        @property
+        def T(self):
+            return self
+
+    op_toarray = SparseMatrixOperator(ToArrayMat())
+    assert np.isclose(op_toarray.norm_bound(), np.linalg.norm(op_toarray.to_numpy(), ord=2))
+    assert isinstance(op_toarray.to_numpy(), np.ndarray)
+
+    class SimpleMat:
+        def __init__(self):
+            self.shape = (1, 1)
+            self.dtype = np.float64
+
+        def __matmul__(self, other):
+            return np.array([other[0]])
+
+        def conj(self):
+            return self
+
+        @property
+        def T(self):
+            return self
+
+    op_simple = SparseMatrixOperator(SimpleMat())
+    assert isinstance(op_simple.to_numpy(), np.ndarray)
+
+
+def test_sparse_operator_validation_errors() -> None:
+    class NoShape:
+        pass
+
+    with pytest.raises(ValueError, match="shape"):
+        SparseMatrixOperator(NoShape())
+
+    class BadShape:
+        shape = [2, 2]
+        dtype = np.float64
+
+    with pytest.raises(ValueError, match="2D"):
+        SparseMatrixOperator(BadShape())
 
 
 def test_statevector_normalize() -> None:
@@ -67,6 +180,12 @@ def test_statevector_normalize() -> None:
 
     with pytest.raises(ValueError, match="1D"):
         StateVector(np.eye(2))
+
+
+def test_statevector_normalize_fallback_path() -> None:
+    state = StateVector(np.array([1, 1], dtype=int))
+    state.normalize()
+    assert np.allclose(state.data, np.array([0.70710678, 0.70710678]))
 
 
 def test_runreport_tracking() -> None:

@@ -1,21 +1,25 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import numpy as np
+
+from .. import backend
 
 @dataclass
 class StateVector:
     """
     State of only the designated system wires for semantic execution.
     """
-    data: np.ndarray
+    data: object
 
     def __post_init__(self) -> None:
-        self.data = np.asarray(self.data)
+        self.data = backend.asarray(self.data)
         if self.data.ndim != 1:
             raise ValueError("StateVector data must be a 1D array")
 
     def normalize(self) -> None:
-        nrm = np.linalg.norm(self.data)
+        nrm = backend.to_scalar(backend.linalg_norm(self.data))
         if nrm == 0:
             return
-        self.data = self.data / nrm
+        try:
+            self.data /= nrm
+        except Exception:
+            self.data = self.data / nrm

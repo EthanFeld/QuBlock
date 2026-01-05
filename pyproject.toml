@@ -31,6 +31,9 @@ Repository = "https://github.com/EthanFeld/QuBlock"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0", "pytest-cov>=4.0", "ruff>=0.6.0"]
+gpu = ["cupy>=12.0"]
+torch = ["torch>=2.0"]
+sparse = ["scipy>=1.9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

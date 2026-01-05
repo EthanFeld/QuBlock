@@ -1,9 +1,16 @@
+from . import backend
 from .compile.circuit import Circuit, Gate
 from .compile.export_qasm import to_openqasm
 from .compile.optimizers import OptimizationOptions, optimize_circuit
 from .primitives.block_encoding import BlockEncoding
 from .primitives.capabilities import Capabilities
-from .primitives.linear_operator import DiagonalOperator, LinearOperator, NumpyMatrixOperator, PermutationOperator
+from .primitives.linear_operator import (
+    DiagonalOperator,
+    LinearOperator,
+    NumpyMatrixOperator,
+    PermutationOperator,
+    SparseMatrixOperator,
+)
 from .primitives.recipe import CircuitRecipe, StaticCircuitRecipe, WireSpec
 from .primitives.resources import ResourceEstimate
 from .primitives.success import SuccessModel
@@ -15,6 +22,7 @@ from .semantic.state import StateVector
 __all__ = [
     "ApplyBlockEncodingStep",
     "BlockEncoding",
+    "backend",
     "Capabilities",
     "Circuit",
     "CircuitRecipe",
@@ -26,6 +34,7 @@ __all__ = [
     "Program",
     "PermutationOperator",
     "ResourceEstimate",
+    "SparseMatrixOperator",
     "StatePreparationRecipe",
     "SemanticExecutor",
     "StateVector",

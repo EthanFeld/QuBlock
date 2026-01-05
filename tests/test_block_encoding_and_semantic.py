@@ -17,6 +17,7 @@ from blockflow import (
     StaticCircuitRecipe,
     WireSpec,
 )
+from blockflow.semantic.tracking import RunReport
 
 
 def _rz(theta: float) -> np.ndarray:
@@ -336,6 +337,32 @@ def test_build_circuit_synthesizes_block_encoding_n_qubits(strategy: str) -> Non
     _assert_global_phase_equiv_matrix(block, mat / alpha)
 
 
+@pytest.mark.parametrize("strategy", ["prep_select", "sparse"])
+def test_build_circuit_synthesizes_block_encoding_3_qubits(strategy: str) -> None:
+    coeffs = [
+        0.25 + 0.05j,
+        -0.18j,
+        0.12 - 0.03j,
+        -0.22 + 0.01j,
+    ]
+    labels = ["XIZ", "YII", "IZX", "ZYY"]
+    mat = sum(c * _pauli_matrix(lbl) for c, lbl in zip(coeffs, labels, strict=True))
+    alpha = float(np.sum(np.abs(coeffs)))
+
+    be = BlockEncoding(
+        op=NumpyMatrixOperator(mat),
+        alpha=alpha,
+        resources=ResourceEstimate(ancilla_qubits_clean=8),
+        capabilities=Capabilities(supports_circuit_recipe=True),
+        synthesis_strategy=strategy,
+    )
+    circ = be.build_circuit(optimize=False)
+    unitary = _unitary_from_circuit(circ)
+    ancillas = tuple(range(3, circ.num_qubits))
+    block = _extract_block(unitary, ancillas=ancillas, num_qubits=circ.num_qubits)
+    _assert_global_phase_equiv_matrix(block, mat / alpha)
+
+
 def test_block_encoding_strategy_respects_resources() -> None:
     coeffs = np.array([0.25, 0.25, 0.5], dtype=complex)
     labels = ["XI", "IZ", "ZX"]
@@ -560,3 +587,160 @@ def test_program_append_and_renormalize() -> None:
     state = StateVector(np.array([1.0, 0.0], dtype=complex))
     final_state, _ = SemanticExecutor().run(program, state, renormalize_each_step=True)
     assert np.allclose(final_state.data, np.array([1.0, 0.0], dtype=complex))
+
+
+def test_semantic_apply_out_uses_buffer() -> None:
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=NumpyMatrixOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    vec = np.array([1.0, 0.0], dtype=complex)
+    out = np.empty_like(vec)
+    returned = be.semantic_apply(vec, out=out)
+    assert returned is out
+    assert np.allclose(out, np.array([0.0, 1.0], dtype=complex))
+
+
+def test_apply_block_encoding_repeat_counts_uses() -> None:
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=NumpyMatrixOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    program = Program([ApplyBlockEncodingStep(be, repeat=2)])
+    state = StateVector(np.array([1.0, 0.0], dtype=complex))
+    final_state, report = SemanticExecutor().run(program, state)
+    assert np.allclose(final_state.data, np.array([1.0, 0.0], dtype=complex))
+    assert report.uses == 2
+
+
+def test_semantic_executor_copy_state_flag() -> None:
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=NumpyMatrixOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    program = Program([ApplyBlockEncodingStep(be)])
+    state = StateVector(np.array([1.0, 0.0], dtype=complex))
+    snapshot = state.data.copy()
+    SemanticExecutor().run(program, state)
+    assert np.allclose(state.data, snapshot)
+
+    state_no_copy = StateVector(np.array([1.0, 0.0], dtype=complex))
+    SemanticExecutor().run(program, state_no_copy, copy_state=False)
+    assert np.allclose(state_no_copy.data, np.array([0.0, 1.0], dtype=complex))
+
+
+def test_apply_block_encoding_repeat_validation() -> None:
+    mat = np.eye(2, dtype=complex)
+    be = BlockEncoding(op=NumpyMatrixOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    with pytest.raises(TypeError, match="repeat"):
+        ApplyBlockEncodingStep(be, repeat=1.5)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="repeat"):
+        ApplyBlockEncodingStep(be, repeat=0)
+
+
+def test_semantic_apply_out_without_apply_into() -> None:
+    class BasicOperator:
+        def __init__(self, mat: np.ndarray) -> None:
+            self._mat = mat
+
+        @property
+        def shape(self) -> tuple[int, int]:
+            return self._mat.shape
+
+        @property
+        def dtype(self):
+            return self._mat.dtype
+
+        def apply(self, vec: np.ndarray) -> np.ndarray:
+            return self._mat @ vec
+
+        def apply_adjoint(self, vec: np.ndarray) -> np.ndarray:
+            return self._mat.conj().T @ vec
+
+        def norm_bound(self) -> float:
+            return float(np.linalg.norm(self._mat, ord=2))
+
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=BasicOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    vec = np.array([1.0, 0.0], dtype=complex)
+    out = np.empty_like(vec)
+    returned = be.semantic_apply(vec, out=out)
+    assert returned is out
+    assert np.allclose(out, np.array([0.0, 1.0], dtype=complex))
+
+    out_adj = np.empty_like(vec)
+    returned_adj = be.semantic_apply_adjoint(vec, out=out_adj)
+    assert returned_adj is out_adj
+    assert np.allclose(out_adj, np.array([0.0, 1.0], dtype=complex))
+
+
+def test_build_circuit_from_matrix_with_optimize_true() -> None:
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(
+        op=NumpyMatrixOperator(mat),
+        alpha=1.0,
+        resources=ResourceEstimate(),
+        capabilities=Capabilities(supports_circuit_recipe=True),
+    )
+    circ = be.build_circuit()
+    assert isinstance(circ, Circuit)
+
+
+def test_can_export_circuit_false_for_non_numpy_operator() -> None:
+    class DummyOperator:
+        @property
+        def shape(self) -> tuple[int, int]:
+            return (2, 2)
+
+        @property
+        def dtype(self):
+            return np.dtype(complex)
+
+        def apply(self, vec: np.ndarray) -> np.ndarray:
+            return vec
+
+        def apply_adjoint(self, vec: np.ndarray) -> np.ndarray:
+            return vec
+
+        def norm_bound(self) -> float:
+            return 1.0
+
+    be = BlockEncoding(
+        op=DummyOperator(),
+        alpha=1.0,
+        resources=ResourceEstimate(),
+        capabilities=Capabilities(supports_circuit_recipe=True),
+    )
+    assert be.can_export_circuit() is False
+    with pytest.raises(ValueError, match="matrix synthesis failed"):
+        be.build_circuit()
+
+
+def test_apply_block_encoding_step_non_inplace_operator() -> None:
+    class NonInPlaceOperator:
+        def __init__(self, mat: np.ndarray) -> None:
+            self._mat = mat
+
+        @property
+        def shape(self) -> tuple[int, int]:
+            return self._mat.shape
+
+        @property
+        def dtype(self):
+            return self._mat.dtype
+
+        def apply(self, vec: np.ndarray) -> np.ndarray:
+            return self._mat @ vec
+
+        def apply_into(self, vec: np.ndarray, out: np.ndarray) -> np.ndarray:
+            return self._mat @ vec
+
+        def apply_adjoint(self, vec: np.ndarray) -> np.ndarray:
+            return self._mat.conj().T @ vec
+
+        def norm_bound(self) -> float:
+            return float(np.linalg.norm(self._mat, ord=2))
+
+    mat = np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=NonInPlaceOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    step = ApplyBlockEncodingStep(be)
+    state = StateVector(np.array([1.0, 0.0], dtype=complex))
+    report = RunReport()
+    step.run_semantic(state, report)
+    assert np.allclose(state.data, np.array([0.0, 1.0], dtype=complex))
+    assert hasattr(state, "_scratch")
+    assert state.data is not getattr(state, "_scratch")
