@@ -1,3 +1,4 @@
+![PyPI - Downloads](https://img.shields.io/pypi/dm/qublock)
 # QuBlock
 QuBlock is a lightweight Python library for block-encoding primitives, semantic
 simulation on statevectors, and OpenQASM export. The pip package name is
