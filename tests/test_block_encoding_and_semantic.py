@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -150,6 +152,18 @@ def test_semantic_execution_predicts_output() -> None:
     assert np.allclose(final_state.data, np.array([0.0, 1.0], dtype=complex))
     assert report.uses == 1
     assert report.cumulative_success_prob == 1.0
+
+
+def test_semantic_execution_preserves_complex_output_from_real_state() -> None:
+    mat = np.array([[0.0, 1.0j], [1.0, 0.0]], dtype=complex)
+    be = BlockEncoding(op=NumpyMatrixOperator(mat), alpha=1.0, resources=ResourceEstimate())
+    program = Program([ApplyBlockEncodingStep(be, repeat=2)])
+
+    final_state, report = SemanticExecutor().run(program, StateVector(np.array([1.0, 0.0])))
+
+    assert np.allclose(final_state.data, np.array([1.0j, 0.0]))
+    assert np.iscomplexobj(final_state.data)
+    assert report.uses == 2
 
 
 def test_semantic_apply_adjoint_respects_capabilities() -> None:
@@ -361,6 +375,35 @@ def test_build_circuit_synthesizes_block_encoding_3_qubits(strategy: str) -> Non
     ancillas = tuple(range(3, circ.num_qubits))
     block = _extract_block(unitary, ancillas=ancillas, num_qubits=circ.num_qubits)
     _assert_global_phase_equiv_matrix(block, mat / alpha)
+
+
+@pytest.mark.parametrize("strategy", ["prep_select", "sparse"])
+@pytest.mark.parametrize("system_qubits", [1, 2])
+def test_randomized_block_encoding_synthesis(strategy: str, system_qubits: int) -> None:
+    rng = np.random.default_rng(20260614 + system_qubits)
+    labels = ["".join(label) for label in itertools.product("IXYZ", repeat=system_qubits)]
+
+    for _ in range(5):
+        selected = rng.choice(labels, size=min(4, len(labels)), replace=False)
+        coeffs = rng.normal(size=len(selected)) + 1j * rng.normal(size=len(selected))
+        mat = sum(
+            coeff * _pauli_matrix(label)
+            for coeff, label in zip(coeffs, selected, strict=True)
+        )
+        alpha = float(np.sum(np.abs(coeffs)))
+        be = BlockEncoding(
+            op=NumpyMatrixOperator(mat),
+            alpha=alpha,
+            resources=ResourceEstimate(ancilla_qubits_clean=8),
+            capabilities=Capabilities(supports_circuit_recipe=True),
+            synthesis_strategy=strategy,
+        )
+
+        circ = be.build_circuit(optimize=False)
+        unitary = _unitary_from_circuit(circ)
+        ancillas = tuple(range(system_qubits, circ.num_qubits))
+        block = _extract_block(unitary, ancillas=ancillas, num_qubits=circ.num_qubits)
+        _assert_global_phase_equiv_matrix(block, mat / alpha)
 
 
 def test_block_encoding_strategy_respects_resources() -> None:

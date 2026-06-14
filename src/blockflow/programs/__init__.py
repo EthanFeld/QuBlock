@@ -1,3 +1,3 @@
-from .program import ApplyBlockEncodingStep, Program, Step
+from .program import ApplyBlockEncodingQuantumStep, ApplyBlockEncodingStep, Program, Step
 
-__all__ = ["ApplyBlockEncodingStep", "Program", "Step"]
+__all__ = ["ApplyBlockEncodingQuantumStep", "ApplyBlockEncodingStep", "Program", "Step"]

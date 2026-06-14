@@ -25,6 +25,7 @@ Optional extras:
 pip install qublock[gpu]    # CuPy backend
 pip install qublock[torch]  # PyTorch backend
 pip install qublock[sparse] # SciPy sparse operators
+pip install -e .[tutorial]  # Qiskit/Jupyter VQLS tutorial
 ```
 
 ## Quickstart
@@ -97,6 +98,59 @@ final_state, report = SemanticExecutor().run(program, state)
 
 The `RunReport` accumulates uses, success probabilities, and ancilla peaks.
 
+### Quantum-constrained semantic execution
+`ApplyBlockEncodingStep` applies the raw classical map `A` for ordinary linear
+algebra experiments. `ApplyBlockEncodingQuantumStep` instead applies the
+physically projected block `A / alpha`, while still storing only the system
+vector.
+
+```python
+from blockflow import ApplyBlockEncodingQuantumStep
+
+program = Program([
+    ApplyBlockEncodingQuantumStep(
+        be,
+        repeat=3,
+        adjoint=False,
+        postselect=True,
+        require_verified=True,
+    )
+])
+final_state, report = SemanticExecutor().run(program, state)
+```
+
+For each use, the quantum step:
+- verifies `alpha >= ||A||` exactly for built-in dense, diagonal, and
+  permutation operators, or from a sufficiently tight declared `norm_bound()`;
+- applies `A / alpha` or `A† / alpha` classically;
+- computes state-dependent projected-block success probability;
+- optionally normalizes the successful postselected branch;
+- accumulates normalization, projected-block error, declared quantum resources,
+  ancilla peaks, and expected retry cost.
+
+`report.expected_trials` estimates independent runs needed per successful
+result. `report.trials_for_confidence(p)` estimates runs needed to see at least
+one success with confidence `p`. For approximate encodings, postselection can
+amplify state error, so `report.conditional_error_bound_valid` becomes false;
+`cumulative_error_bound` then bounds only unnormalized projected-map
+composition.
+
+### Scope and scaling
+Semantic execution stores only the designated system statevector. Declared
+block-encoding ancillas are tracked as metadata and are never added to the
+simulated state, so a primitive with `n` system qubits and `a` ancillas uses
+`O(2^n)` state memory instead of `O(2^(n+a))`.
+
+The operator implementation still determines application cost. Structured,
+sparse, GPU-backed, and matrix-free operators can preserve the ancilla-saving
+advantage; an explicit dense `2^n x 2^n` matrix still requires `O(4^n)` storage.
+
+Current quantum semantic programs model one selected projected/postselected
+system branch through sequential block uses and adjoints. Algorithms whose
+result depends on coherent interference between success and failure ancilla
+branches, controlled block encodings, amplitude amplification, or QSVT phase
+sequences cannot be reproduced from one system vector and remain unsupported.
+
 ### Backend selection and speed flags
 Semantic execution defaults to NumPy. You can switch backends without changing
 code by setting environment variables:
@@ -155,6 +209,9 @@ For LCU synthesis you can choose a strategy:
 - `sparse` uses one ancilla per term and single-controlled select gates.
 
 Both LCU strategies export only to QASM3 because they use controlled rotations.
+Pauli decomposition enumerates `4^n` Pauli strings, so automatic matrix
+synthesis is intended for small validation/export cases rather than large-scale
+semantic simulation.
 
 ```python
 mat = np.array([[0, 1], [1, 0]], dtype=complex)
@@ -179,6 +236,8 @@ raw = be.build_circuit(optimize=False)
 
 ## Examples and notebooks
 - `notebooks/lcu_demo.ipynb` walks through LCU synthesis and QASM export.
+- `notebooks/vqls_qiskit_tutorial.ipynb` prototypes VQLS with a Qiskit ansatz,
+  classical optimization, and QuBlock quantum-constraint tracking.
 
 ## Development
 Tests run with coverage enforcement:

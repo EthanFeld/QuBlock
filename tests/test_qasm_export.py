@@ -14,6 +14,7 @@ def test_qasm3_measurement_includes_classical_reg() -> None:
     qasm = to_openqasm(circ, flavor="qasm3")
 
     assert "OPENQASM 3.0;" in qasm
+    assert 'include "stdgates.inc";' in qasm
     assert "qubit[2] q;" in qasm
     assert "bit[2] c;" in qasm
     assert "c[1] = measure q[1];" in qasm
@@ -69,6 +70,14 @@ def test_qasm2_multi_controlled_x_raises() -> None:
 def test_qasm2_controlled_gate_not_supported() -> None:
     circ = Circuit(num_qubits=2)
     circ.add("u", [1], controls=[0])
+    with pytest.raises(ValueError, match="not supported"):
+        to_openqasm(circ, flavor="qasm2")
+
+
+@pytest.mark.parametrize("name", ["s", "t"])
+def test_qasm2_rejects_undefined_controlled_gate_names(name: str) -> None:
+    circ = Circuit(num_qubits=2)
+    circ.add(name, [1], controls=[0])
     with pytest.raises(ValueError, match="not supported"):
         to_openqasm(circ, flavor="qasm2")
 

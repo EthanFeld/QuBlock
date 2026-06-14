@@ -5,6 +5,7 @@ import pytest
 
 qiskit = pytest.importorskip("qiskit")
 from qiskit import QuantumCircuit
+from qiskit import qasm3
 from qiskit.quantum_info import Statevector
 
 from blockflow import (
@@ -224,3 +225,26 @@ def test_qiskit_matches_semantic_for_block_encoding_synthesis() -> None:
     projected = qiskit_out[keep]
     expected = final_state.data / alpha
     _assert_state_global_phase(projected, expected)
+
+
+@pytest.mark.parametrize("strategy", ["prep_select", "sparse"])
+def test_qiskit_parses_synthesized_qasm3(strategy: str) -> None:
+    mat = np.array([[0.3 + 0.1j, -0.2], [0.1j, -0.4]], dtype=complex)
+    paulis = (
+        np.eye(2, dtype=complex),
+        np.array([[0.0, 1.0], [1.0, 0.0]], dtype=complex),
+        np.array([[0.0, -1.0j], [1.0j, 0.0]], dtype=complex),
+        np.array([[1.0, 0.0], [0.0, -1.0]], dtype=complex),
+    )
+    alpha = float(sum(abs(0.5 * np.trace(pauli @ mat)) for pauli in paulis))
+    be = BlockEncoding(
+        op=NumpyMatrixOperator(mat),
+        alpha=alpha,
+        resources=ResourceEstimate(ancilla_qubits_clean=4),
+        capabilities=Capabilities(supports_circuit_recipe=True),
+        synthesis_strategy=strategy,
+    )
+
+    parsed = qasm3.loads(be.export_openqasm(flavor="qasm3", optimize=False))
+
+    assert parsed.num_qubits == be.build_circuit(optimize=False).num_qubits

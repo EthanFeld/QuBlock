@@ -146,6 +146,15 @@ def test_backend_numpy_fallback_paths() -> None:
     assert backend_impl.to_scalar(ScalarLike()) == 7.0
 
 
+def test_backend_numpy_fallback_rejects_unsafe_output_cast() -> None:
+    backend_impl = backend._NumpyBackend(np, "numpy")
+    mat = np.array([[0.0, 1.0j], [1.0, 0.0]], dtype=complex)
+    out = np.empty(2, dtype=float)
+
+    with pytest.raises(TypeError, match="Cannot safely cast"):
+        backend_impl.matmul(mat, np.array([1.0, 0.0]), out=out)
+
+
 def test_backend_invalid_backend_name(monkeypatch) -> None:
     monkeypatch.setenv("BLOCKFLOW_BACKEND", "bogus")
     with pytest.raises(ValueError, match="Unknown backend"):
@@ -157,3 +166,18 @@ def test_backend_invalid_dtype_env(monkeypatch) -> None:
     monkeypatch.setenv("BLOCKFLOW_DTYPE", "bad")
     with pytest.raises(ValueError, match="Unknown dtype"):
         backend.asarray([1.0])
+
+
+def test_torch_backend_promotes_binary_dtypes(monkeypatch) -> None:
+    torch = pytest.importorskip("torch")
+    monkeypatch.setenv("BLOCKFLOW_BACKEND", "torch")
+    monkeypatch.delenv("BLOCKFLOW_DTYPE", raising=False)
+
+    mat = backend.asarray([[0, 1], [1, 0]])
+    vec = backend.asarray([1.0, 0.0])
+    assert torch.allclose(backend.matmul(mat, vec), torch.tensor([0.0, 1.0]))
+
+    complex_mat = backend.asarray([[0.0, 1.0j], [1.0, 0.0]])
+    result = backend.matmul(complex_mat, vec)
+    assert result.is_complex()
+    assert torch.allclose(result, torch.tensor([0.0, 1.0 + 0.0j], dtype=result.dtype))

@@ -112,6 +112,13 @@ class _NumpyBackend:
     def copy(self, x: Any) -> Any:
         return x.copy()
 
+    def _copy_result(self, result: Any, out: Any) -> Any:
+        can_cast = getattr(self.xp, "can_cast", np.can_cast)
+        if not can_cast(result.dtype, out.dtype, casting="same_kind"):
+            raise TypeError(f"Cannot safely cast result from {result.dtype} to {out.dtype}")
+        out[...] = result
+        return out
+
     def matmul(self, a: Any, b: Any, *, out: Any = None) -> Any:
         try:
             return self.xp.matmul(a, b, out=out)
@@ -119,8 +126,7 @@ class _NumpyBackend:
             result = a @ b
             if out is None:
                 return result
-            out[...] = result
-            return out
+            return self._copy_result(result, out)
 
     def multiply(self, a: Any, b: Any, *, out: Any = None) -> Any:
         try:
@@ -129,8 +135,7 @@ class _NumpyBackend:
             result = a * b
             if out is None:
                 return result
-            out[...] = result
-            return out
+            return self._copy_result(result, out)
 
     def take(self, a: Any, indices: Any, *, out: Any = None) -> Any:
         try:
@@ -223,22 +228,35 @@ class _TorchBackend:  # pragma: no cover - optional backend
     def copy(self, x: Any) -> Any:
         return x.clone()
 
+    def _promote_binary(self, a: Any, b: Any) -> tuple[Any, Any]:
+        if not isinstance(a, self.torch.Tensor):
+            device = b.device if isinstance(b, self.torch.Tensor) else None
+            a = self.torch.as_tensor(a, device=device)
+        if not isinstance(b, self.torch.Tensor):
+            b = self.torch.as_tensor(b, device=a.device)
+        elif b.device != a.device:
+            b = b.to(device=a.device)
+        dtype = self.torch.promote_types(a.dtype, b.dtype)
+        return a.to(dtype=dtype), b.to(dtype=dtype)
+
     def matmul(self, a: Any, b: Any, *, out: Any = None) -> Any:
+        a, b = self._promote_binary(a, b)
         try:
             return self.torch.matmul(a, b, out=out)
-        except TypeError:
+        except (RuntimeError, TypeError):
             result = a @ b
-            if out is None:
+            if out is None or out.dtype != result.dtype:
                 return result
             out.copy_(result)
             return out
 
     def multiply(self, a: Any, b: Any, *, out: Any = None) -> Any:
+        a, b = self._promote_binary(a, b)
         try:
             return self.torch.mul(a, b, out=out)
-        except TypeError:
+        except (RuntimeError, TypeError):
             result = a * b
-            if out is None:
+            if out is None or out.dtype != result.dtype:
                 return result
             out.copy_(result)
             return out

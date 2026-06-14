@@ -7,8 +7,9 @@ from typing import Optional
 @dataclass(frozen=True)
 class SuccessModel:
     """
-    success_prob is the probability of landing in the postselection subspace
-    for one use of the primitive, if it is postselected.
+    success_prob is a state-independent implementation success factor.
+    ApplyBlockEncodingQuantumStep multiplies it by the state-dependent
+    probability of landing in the projected block subspace.
     If the primitive is unitary with no postselection, set success_prob = 1.0.
     """
     success_prob: float = 1.0

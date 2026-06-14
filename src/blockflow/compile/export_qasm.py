@@ -16,7 +16,7 @@ def to_openqasm(circ: Circuit, *, flavor: QasmFlavor = "qasm3") -> str:
         if needs_classical:
             lines.append(f"creg c[{circ.num_qubits}];")
     else:
-        lines = ["OPENQASM 3.0;", f"qubit[{circ.num_qubits}] q;"]
+        lines = ["OPENQASM 3.0;", 'include "stdgates.inc";', f"qubit[{circ.num_qubits}] q;"]
         if needs_classical:
             lines.append(f"bit[{circ.num_qubits}] c;")
 
@@ -75,7 +75,7 @@ def _emit_controlled_qasm2(g: Gate, n: str) -> str:
         raise ValueError("Controlled parameterized gates are not supported in qasm2")
     if len(g.qubits) != 1:
         raise ValueError("Controlled multi-target gates are not supported in qasm2")
-    if len(g.controls) == 1 and n in {"x", "y", "z", "h", "s", "t"}:
+    if len(g.controls) == 1 and n in {"x", "y", "z", "h"}:
         gate_name = f"c{n}"
         qs = ", ".join([f"q[{i}]" for i in (g.controls + g.qubits)])
         return f"{gate_name} {qs};"

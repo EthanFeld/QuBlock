@@ -1,4 +1,4 @@
-from .block_encoding import BlockEncoding
+from .block_encoding import BlockEncoding, BlockEncodingConstraintStatus
 from .capabilities import Capabilities
 from .linear_operator import DiagonalOperator, LinearOperator, NumpyMatrixOperator, PermutationOperator
 from .recipe import CircuitRecipe, StaticCircuitRecipe, WireSpec
@@ -8,6 +8,7 @@ from .vector_encoding import StatePreparationRecipe, StaticStatePreparationRecip
 
 __all__ = [
     "BlockEncoding",
+    "BlockEncodingConstraintStatus",
     "Capabilities",
     "CircuitRecipe",
     "DiagonalOperator",

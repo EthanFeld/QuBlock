@@ -24,6 +24,15 @@ from ..compile.synthesis import (
     synthesize_unitary_circuit,
 )
 
+
+@dataclass(frozen=True)
+class BlockEncodingConstraintStatus:
+    valid: bool | None
+    operator_norm: float | None
+    alpha: float
+    reason: str
+
+
 def _validate_real(name: str, value: float, *, positive: bool = False, non_negative: bool = False) -> None:
     if isinstance(value, bool) or not isinstance(value, numbers.Real):
         raise TypeError(f"{name} must be a real number")
@@ -51,6 +60,8 @@ class BlockEncoding:
     Convention
     semantic_apply returns A acting on the system state vector, not scaled by 1/alpha.
     alpha is tracked explicitly so algorithms can account for it.
+    epsilon bounds error in the projected block A/alpha before postselection
+    normalization.
     """
     op: LinearOperator
     alpha: float
@@ -163,6 +174,70 @@ class BlockEncoding:
             out_arr[...] = tmp
         self._validate_vector(out_arr, cols, "semantic_apply_adjoint output")
         return out_arr
+
+    def constraint_status(self, *, atol: float = 1e-10) -> BlockEncodingConstraintStatus:
+        norm: float | None = None
+        exact = False
+        if isinstance(self.op, NumpyMatrixOperator):
+            norm = float(np.linalg.norm(self.op.to_numpy(), ord=2))
+            exact = True
+        elif isinstance(self.op, DiagonalOperator):
+            norm = backend.to_scalar(backend.amax(backend.abs(self.op.diag)))
+            exact = True
+        elif isinstance(self.op, PermutationOperator):
+            norm = 1.0
+            exact = True
+        else:
+            try:
+                norm = float(self.op.norm_bound())
+            except (AttributeError, NotImplementedError, TypeError, ValueError):
+                norm = None
+        if norm is None:
+            return BlockEncodingConstraintStatus(
+                valid=None,
+                operator_norm=None,
+                alpha=float(self.alpha),
+                reason="operator norm not exactly verifiable without materializing operator",
+            )
+        if not math.isfinite(norm) or norm < 0:
+            return BlockEncodingConstraintStatus(
+                valid=None,
+                operator_norm=norm,
+                alpha=float(self.alpha),
+                reason="operator norm bound must be finite and non-negative",
+            )
+        valid: bool | None
+        if norm <= float(self.alpha) + atol:
+            valid = True
+            reason = "alpha bounds operator norm"
+        elif exact:
+            valid = False
+            reason = "alpha is smaller than operator norm"
+        else:
+            valid = None
+            reason = "declared norm bound is too loose to verify alpha"
+        return BlockEncodingConstraintStatus(
+            valid=valid,
+            operator_norm=norm,
+            alpha=float(self.alpha),
+            reason=reason,
+        )
+
+    def validate_quantum_constraints(
+        self,
+        *,
+        require_verified: bool = False,
+        atol: float = 1e-10,
+    ) -> BlockEncodingConstraintStatus:
+        status = self.constraint_status(atol=atol)
+        if status.valid is False:
+            raise ValueError(
+                "Invalid block encoding: alpha must bound operator norm "
+                f"(alpha={status.alpha}, norm={status.operator_norm})"
+            )
+        if require_verified and status.valid is None:
+            raise ValueError(f"Unverified block encoding constraint: {status.reason}")
+        return status
 
     def can_export_circuit(self) -> bool:
         if not self.capabilities.supports_circuit_recipe:
